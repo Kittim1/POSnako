@@ -1,0 +1,32 @@
+Keybinds          
+------dashboard-------
+Title			Key
+
+Quantity		Ctrl + F1
+Enter Barcode		Ctrl + F2
+Cash Tendered		Ctrl + F3
+New Transaction		Ctrl + F9
+Resume Transaction	Ctrl + F7
+Pause Transaction	Ctrl + b
+Void			Ctrl + m
+Log Out 		Ctrl + L
+---------------------------------
+------User and Admin-------------
+User	Password
+
+Admin   12345
+Cashier1   45678
+Cashier2   01234
+
+----To do-----
+Show report		Ctrl + F6
+Switch Theme		Ctrl + F12
+
+
+Features:
+Keybinds
+Pause/Resume
+Void
+Login
+Log Out
+Admin & Cashier

@@ -1,0 +1,361 @@
+'use client'
+import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { Container, Row, Col, Form, Table, Button, Modal } from 'react-bootstrap';
+import axios from 'axios';
+
+const Home = () => {
+  const [items, setItems] = useState([]);
+  const [quantity, setQuantity] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [totalCost, setTotalCost] = useState(0);
+  const [cashTendered, setCashTendered] = useState('');
+  const [change, setChange] = useState(null);
+  const [productData, setProductData] = useState([]);
+  const [adminCredentials, setAdminCredentials] = useState([]);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [pausedTransactions, setPausedTransactions] = useState([]);
+  const [theme, setTheme] = useState('light');
+  const [currentUser, setCurrentUser] = useState(null);
+
+  const quantityRef = useRef(null);
+  const barcodeRef = useRef(null);
+  const cashTenderedRef = useRef(null);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchProductData = async () => {
+      try {
+        const response = await axios.get('http://localhost/tims/products.php');
+        setProductData(response.data);
+      } catch (error) {
+        console.error("There was an error fetching the product data!", error);
+      }
+    };
+
+    const fetchUserCredentials = async () => {
+      try {
+        const response = await axios.get('http://localhost/tims/user.php');
+        setAdminCredentials(response.data);
+      } catch (error) {
+        console.error("There was an error fetching the admin credentials!", error);
+      }
+    };
+
+    const fetchCurrentUser = async () => {
+      const username = localStorage.getItem('username');
+      if (username) {
+        try {
+          const response = await axios.get(`http://localhost/tims/user.php?user=${encodeURIComponent(username)}`);
+          setCurrentUser(response.data[0]);
+        } catch (error) {
+          console.error("There was an error fetching current user info!", error);
+        }
+      }
+    };
+
+    fetchProductData();
+    fetchUserCredentials();
+    fetchCurrentUser();
+
+    const handleKeydown = (event) => {
+      if (event.ctrlKey) {
+        switch (event.key) {
+          case 'F2':
+            event.preventDefault();
+            barcodeRef.current.focus();
+            break;
+          case 'F1':
+            event.preventDefault();
+            quantityRef.current.focus();
+            break;
+          case 'F3':
+            event.preventDefault();
+            cashTenderedRef.current.focus();
+            break;
+          case 'F6':
+            event.preventDefault();
+            showReport();
+            break;
+          case 'F7':
+            if (event.ctrlKey) {
+              event.preventDefault();
+              resumePausedTransaction();
+            }
+            break;
+          case 'F9':
+            event.preventDefault();
+            resetProcess();
+            break;
+          case 'F12':
+            event.preventDefault();
+            toggleTheme();
+            break;
+          case 'm':
+            event.preventDefault();
+            if (items.length > 0) {
+              promptPasswordToDelete();
+            }
+            break;
+          case 'b':
+            event.preventDefault();
+            if (items.length > 0) {
+              setAsideTransaction();
+            }
+            break;
+          default:
+            break;
+        }
+      }
+    };
+
+    const handleKeyPress = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (event.target.id === 'quantity') {
+          barcodeRef.current.focus();
+        } else if (event.target.id === 'barcode') {
+          addItem();
+        } else if (event.target.id === 'cashTendered') {
+          calculateChange();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeydown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeydown);
+    };
+  }, [items, pausedTransactions, adminCredentials, theme, cashTendered, totalCost, currentUser]);
+
+  const addItem = () => {
+    const product = productData.find(p => p.barcode === barcode);
+    const parsedQuantity = parseInt(quantity, 10);
+
+    if (product && parsedQuantity > 0) {
+      const newItem = { product: product.p_name, quantity: parsedQuantity, price: product.price };
+      setItems([...items, newItem]);
+      setTotalCost(totalCost + newItem.quantity * newItem.price);
+      resetFields();
+      quantityRef.current.focus();
+    } else {
+      alert('Please enter a valid barcode and quantity.');
+    }
+  };
+
+  const resetFields = () => {
+    setBarcode('');
+    setQuantity('');
+  };
+
+  const promptPasswordToDelete = () => {
+    setShowPasswordModal(true);
+  };
+
+  const validatePassword = () => {
+    const admin = adminCredentials.find(user => user.user === 'Admin');
+    if (admin && admin.password === adminPassword) {
+      setShowPasswordModal(false);
+      setShowDeleteModal(true);
+    } else {
+      alert('Incorrect admin password.');
+    }
+    setAdminPassword('');
+  };
+
+  const deleteItem = (index) => {
+    const itemToRemove = items[index];
+    setItems(items.filter((_, i) => i !== index));
+    setTotalCost(totalCost - itemToRemove.quantity * itemToRemove.price);
+    setShowDeleteModal(false);
+  };
+
+  const handleDeleteSelection = (index) => {
+    deleteItem(index);
+  };
+
+  const calculateChange = () => {
+    if (!isNaN(cashTendered) && cashTendered >= totalCost) {
+      setChange(cashTendered - totalCost);
+    } else {
+      alert('Insufficient cash.');
+      setChange(null);
+    }
+  };
+
+  const resetProcess = () => {
+    setItems([]);
+    setTotalCost(0);
+    setCashTendered('');
+    setChange(null);
+    resetFields();
+    quantityRef.current.focus();
+  };
+
+  const setAsideTransaction = () => {
+    setPausedTransactions([...pausedTransactions, { items, totalCost }]);
+    resetProcess();
+  };
+
+  const resumePausedTransaction = () => {
+    if (pausedTransactions.length > 0) {
+      const transaction = pausedTransactions[pausedTransactions.length - 1];
+      setItems(transaction.items);
+      setTotalCost(transaction.totalCost);
+      setPausedTransactions(pausedTransactions.slice(0, -1));
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+  };
+
+  const showReport = async () => {
+    try {
+      const response = await axios.get(`http://localhost/tims/transactions.php?user=${encodeURIComponent(currentUser.user)}`);
+      console.log('Transactions fetched:', response.data); // Add debugging info
+      const transactions = response.data;
+  
+      router.push({
+        pathname: '/reports',
+        query: { transactions: JSON.stringify(transactions), currentUser: JSON.stringify(currentUser) }
+      });
+    } catch (error) {
+      console.error("There was an error fetching the user transactions!", error);
+    }
+  };
+
+  return (
+    <Container className={`mt-5 ${theme}`}>
+      <header>
+        <div className="text-center">
+          <h2>RANDOGS SUPERMARKET</h2>
+          <p>By: Kittim Ignalig</p>
+        </div>
+      </header>
+      <Row>
+        <Col md={6}>
+          <Form.Group controlId="quantity" className="mb-3">
+            <Form.Label>Quantity</Form.Label>
+            <Form.Control
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder="Quantity"
+              ref={quantityRef}
+              onKeyPress={handleKeyPress}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group controlId="barcode" className="mb-3">
+            <Form.Label>Bar Code</Form.Label>
+            <Form.Control
+              type="text"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="Barcode"
+              ref={barcodeRef}
+              onKeyPress={handleKeyPress}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={8}>
+          <h2 className="text-end">Amount Due: ?{totalCost.toFixed(2)}</h2>
+          <Table striped bordered hover className="mt-3">
+            <thead>
+              <tr>
+                <th>Quantity</th>
+                <th>Product</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={index}>
+                  <td>{item.quantity}</td>
+                  <td>{item.product}</td>
+                  <td>?{item.price.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Col>
+        <Col md={4}>
+          <Form.Group controlId="cashTendered">
+            <Form.Label>Cash Tendered</Form.Label>
+            <Form.Control
+              type="number"
+              value={cashTendered}
+              onChange={(e) => setCashTendered(e.target.value)}
+              placeholder="Cash Tendered"
+              ref={cashTenderedRef}
+              onKeyPress={handleKeyPress}
+            />
+          </Form.Group>
+          {change !== null && (
+            <h2 className="mt-3">Change: ?{change.toFixed(2)}</h2>
+          )}
+        </Col>
+      </Row>
+      <Modal show={showPasswordModal} onHide={() => setShowPasswordModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Admin Password</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Control
+            type="password"
+            placeholder="Enter admin password"
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+          />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowPasswordModal(false)}>
+            Close
+          </Button>
+          <Button variant="primary" onClick={validatePassword}>
+            Submit
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Select Item to Delete</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <ul>
+            {items.map((item, index) => (
+              <li key={index}>
+                <Button
+                  variant="danger"
+                  onClick={() => handleDeleteSelection(index)}
+                >
+                  Delete {item.product}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </Container>
+  );
+};
+
+export default Home;
+
+
+
+
